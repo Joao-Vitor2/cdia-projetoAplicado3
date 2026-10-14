@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import shutil
 import ssl
@@ -11,6 +12,9 @@ import requests
 import polars as pl
 
 from config import ZIP_DIR, DUMP_DIR, DADOS_DIR
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger(__name__)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
@@ -61,7 +65,7 @@ def pegar_com_retry(url, headers, ca_bundle, offset=0, tentativas=5):
             return resposta
         except (requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
             espera = 2 ** i  # backoff exponencial: 1, 2, 4, 8, 16s
-            print(f"Tentativa {i+1} falhou ({e}). Esperando {espera}s...")
+            log.warning("Tentativa %d falhou (%s). Esperando %ds...", i + 1, e, espera)
             time.sleep(espera)
     raise RuntimeError("Não foi possível baixar o arquivo após várias tentativas.")
 
@@ -87,14 +91,24 @@ def baixar_com_resume(url, headers, ca_bundle, destino, tentativas_streaming=5):
                     print(f"Baixando: {f.tell() / 1024 / 1024:.2f} / {tamanho_total / 1024 / 1024:.2f} MB", end="\r")
             print()
         except requests.exceptions.ConnectionError as e:
-            print(f"\nConexão caiu durante o download ({e}). Retomando...")
+            log.warning("Conexão caiu durante o download (%s). Retomando...", e)
             continue
 
         if tamanho_total and destino.stat().st_size == tamanho_total:
             return
-        print(f"\nArquivo incompleto ({destino.stat().st_size} / {tamanho_total} bytes). Retomando...")
+        log.warning("Arquivo incompleto (%d / %d bytes). Retomando...",
+                    destino.stat().st_size, tamanho_total)
 
     raise RuntimeError("Não foi possível concluir o download após várias tentativas.")
+
+def garantir_7z():
+    """Confere se o 7z está instalado, com uma mensagem clara em vez do erro cru do subprocess."""
+    if shutil.which('7z') is None:
+        raise RuntimeError(
+            'O programa "7z" não foi encontrado. Instale-o para descompactar os microdados '
+            '(ex.: "sudo apt install p7zip-full" no Linux ou "brew install p7zip" no macOS).'
+        )
+
 
 def garantir_ca_bundle():
     # o site do INEP não envia o certificado intermediário, então montamos o bundle na mão
@@ -111,6 +125,7 @@ def pegar_microdados_ano(ano: int):
     destino = Path(f"{ZIP_DIR}/microdados_{ano}.zip")
     destino.parent.mkdir(parents=True, exist_ok=True)
 
+    garantir_7z()
     garantir_ca_bundle()
     baixar_com_resume(url, HEADERS, CA_BUNDLE, destino)
 
@@ -126,7 +141,7 @@ def pegar_inse_ano(ano: int):
     for tipo, arquivo in ARQUIVOS_INSE[ano].items():
         caminho_parquet = caminho_inse(ano, tipo)
         if caminho_parquet.exists():
-            print(f'{caminho_parquet.name} já existe, pulando.')
+            log.info('%s já existe, pulando.', caminho_parquet.name)
             continue
 
         caminho_xlsx = Path(ZIP_DIR) / arquivo
@@ -134,7 +149,7 @@ def pegar_inse_ano(ano: int):
         baixar_com_resume(URL_INSE.format(ano=ano, arquivo=arquivo), HEADERS, CA_BUNDLE, caminho_xlsx)
 
         ler_planilha_inse(caminho_xlsx).write_parquet(caminho_parquet)
-        print(f'{arquivo} -> {caminho_parquet.name}')
+        log.info('%s -> %s', arquivo, caminho_parquet.name)
 
 def ler_planilha_inse(caminho_xlsx: Path) -> pl.DataFrame:
     # algumas planilhas (ex.: 2019) têm linhas de observação antes do cabeçalho
@@ -162,16 +177,16 @@ def organizar_dados():
 
         match = re.search(r"(\d{4})", arquivo.name)
         if not match:
-            print(f"Não foi possível identificar o ano em '{arquivo.name}', pulando.")
+            log.warning("Não foi possível identificar o ano em '%s', pulando.", arquivo.name)
             continue
         ano = int(match.group(1))
         if ano not in ANOS_INSE:
-            print(f"Ano {ano} não tem INSE publicado, pulando.")
+            log.warning("Ano %d não tem INSE publicado, pulando.", ano)
             continue
 
         pasta_dados = arquivo / "DADOS"
         if not pasta_dados.exists():
-            print(f"Pasta DADOS não encontrada em '{arquivo}', pulando.")
+            log.warning("Pasta DADOS não encontrada em '%s', pulando.", arquivo)
             continue
 
         destino = dados_path / f"dados_{ano}"
@@ -181,14 +196,14 @@ def organizar_dados():
             if alvo.exists():
                 alvo.unlink()
             shutil.move(str(item), str(alvo))
-        print(f"Dados do ano {ano} movidos para '{destino}'.")
+        log.info("Dados do ano %d movidos para '%s'.", ano, destino)
 
 def criar_dicionario(ano: int):
     """Gera o JSON {variável: {código: descrição}} a partir do dicionário em Excel do INEP."""
     validar_ano(ano)
     caminho_json = caminho_dicionario(ano)
     if caminho_json.exists():
-        print(f'{caminho_json.name} já existe, pulando.')
+        log.info('%s já existe, pulando.', caminho_json.name)
         return
 
     caminho_excel = next(Path(DUMP_DIR).glob(f'microdados_enem_{ano}/DICIONÁRIO/*.xlsx'))
@@ -218,13 +233,13 @@ def criar_dicionario(ano: int):
     with open(caminho_json, 'w', encoding='utf-8') as f:
         json.dump(dicionario_variaveis, f, ensure_ascii=False, indent=2)
 
-    print(f'{caminho_json.name} criado com sucesso!')
+    log.info('%s criado com sucesso!', caminho_json.name)
 
 def csvs_para_parquet():
     for caminho_csv in Path(DADOS_DIR).rglob('*.csv'):
         caminho_parquet = caminho_csv.with_suffix('.parquet')
         if caminho_parquet.exists():
-            print(f'{caminho_parquet.name} já existe, pulando.')
+            log.info('%s já existe, pulando.', caminho_parquet.name)
             continue
 
         # o polars só lê CSV em UTF-8 de forma lazy; converter o latin1 em blocos evita
@@ -239,7 +254,8 @@ def csvs_para_parquet():
 
         tamanho_csv_mb = caminho_csv.stat().st_size / 1e6
         tamanho_parquet_mb = caminho_parquet.stat().st_size / 1e6
-        print(f'{caminho_csv.name} ({tamanho_csv_mb:.1f} MB) -> {caminho_parquet.name} ({tamanho_parquet_mb:.1f} MB)')
+        log.info('%s (%.1f MB) -> %s (%.1f MB)',
+                 caminho_csv.name, tamanho_csv_mb, caminho_parquet.name, tamanho_parquet_mb)
 
 def preparar_ano(ano: int):
     """Roda toda a extração de um ano: microdados, INSE, dicionário e conversão para parquet."""

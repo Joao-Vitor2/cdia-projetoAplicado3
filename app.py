@@ -159,8 +159,8 @@ def pagina_dashboard():
         st.altair_chart(percentil.grafico_percentis(resultado['percentis']), width='stretch')
     with coluna_2:
         # TODO: gráfico de outro integrante
-        st.subheader('Gráfico 2')
-        st.bar_chart(resultado['media_por_nivel'], x='NIVEL_ESTIMADO', y='MEDIA_MT')
+        st.subheader(f'Média de {resultado["area"]} por nível INSE')
+        st.bar_chart(resultado['media_por_nivel'], x='NIVEL_ESTIMADO', y=resultado['coluna_media'])
 
     coluna_3, coluna_4 = st.columns(2)
     with coluna_3:
