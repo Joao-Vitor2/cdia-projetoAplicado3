@@ -31,7 +31,14 @@ app.py  →  main.py  →  extrator_microdados.py (lê os dados)  +  tabela.py (
 pip install -r requirements.txt
 ```
 
-A extração também precisa do `7z` instalado no sistema para descompactar o zip do INEP.
+A extração também precisa do `7z` instalado **no sistema** (não via pip) para descompactar o zip do INEP:
+
+```bash
+sudo apt install p7zip-full   # Linux (Debian/Ubuntu)
+brew install p7zip            # macOS
+```
+
+Se o `7z` não estiver instalado, o extrator avisa com uma mensagem clara antes de tentar baixar.
 
 ### 2. Baixar e preparar os dados
 

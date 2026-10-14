@@ -158,6 +158,10 @@ def analisar(entrada: dict) -> dict:
 
     return {
         'ano': ano_atual(),
+        'area': entrada['area'],
+        # coluna de média correspondente à área escolhida (ex.: 'MEDIA_MT'), para o dashboard
+        # não ficar preso a Matemática
+        'coluna_media': coluna_nota.replace('NU_NOTA', 'MEDIA'),
         'fonte_nivel': fonte_nivel,
         'posicao': tabela.estimar_posicao_candidato(df_nivel, coluna_nota, entrada['nota'], nivel),
         'percentis': tabela.calcular_percentis(df_nivel, coluna_nota, entrada['nota'], nivel, co_uf),
