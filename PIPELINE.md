@@ -7,6 +7,8 @@ Os diagramas são em [Mermaid](https://mermaid.js.org/) e renderizam direto no G
 
 ```mermaid
 flowchart LR
+    classDef card rx:10,ry:10
+
     subgraph EXTRACAO["extrator_microdados.py"]
         direction TB
         A["Baixa microdados do ENEM .zip"] --> B["Descompacta com 7z"]
@@ -23,15 +25,20 @@ flowchart LR
 
     subgraph APP["app.py"]
         direction TB
-        J[Login] --> K["Formulário:<br/>nota, UF, perfil"] --> L["Dashboard:<br/>gráficos e tabelas"]
+        J["Login"] --> K["Formulário:<br/>nota, UF, perfil"] --> L["Dashboard:<br/>gráficos e tabelas"]
     end
 
     EXTRACAO -->|"parquet + json<br/>em dados/dados_ano/"| TRATAMENTO
     TRATAMENTO -->|"dicionários prontos<br/>para desenhar"| APP
 
+    class A,B,C,D,E,F,G,H,I,J,K,L card
+
     style EXTRACAO fill:#e3f2fd,stroke:#1976d2
     style TRATAMENTO fill:#e8f5e9,stroke:#388e3c
     style APP fill:#ffebee,stroke:#d32f2f
+
+    %% setas 0-7: dentro dos subgraphs coloridos -> pretas; 8-9: ligam os blocos -> cinza (padrão)
+    linkStyle 0,1,2,3,4,5,6,7 stroke:#000,stroke-width:1.5px
 ```
 
 ## Detalhe por camada
@@ -42,9 +49,11 @@ Transforma os dados brutos do INEP em arquivos prontos para o app. Roda uma vez 
 
 ```mermaid
 flowchart TB
-    inep[(Site do INEP)]
+    classDef card rx:10,ry:10
 
-    inep -->|microdados_enem_ano.zip| z["Download com retry + resume"]
+    inep[("Site do INEP")]
+
+    inep -->|"microdados_enem_ano.zip"| z["Download com retry + resume"]
     z --> dump["Descompacta com 7z → dump/"]
     dump --> dic["DICIONÁRIO .xlsx → DICIONARIO_ano.json"]
     dump --> csv["CSVs em latin1"]
@@ -56,6 +65,8 @@ flowchart TB
     pq --> out["dados/dados_ano/"]
     ip --> out
     dic --> out
+
+    class z,dump,dic,csv,pq,ix,ip,out card
 
     style inep fill:#fff3e0,stroke:#f57c00
     style out fill:#e3f2fd,stroke:#1976d2
@@ -70,9 +81,11 @@ e chama o `tabela.py`, que só faz cálculo (sem Streamlit).
 
 ```mermaid
 flowchart TB
-    md[MICRODADOS .parquet] --> join
-    esc[INSE escolas] --> join
-    mun[INSE municípios] --> join
+    classDef card rx:10,ry:10
+
+    md["MICRODADOS .parquet"] --> join
+    esc["INSE escolas"] --> join
+    mun["INSE municípios"] --> join
 
     join["resultados_nivel:<br/>cruza por escola, senão por município"] --> nivel["Cada candidato ganha NIVEL_ESTIMADO"]
 
@@ -87,6 +100,8 @@ flowchart TB
     calc --> p3["calcular_media_por_nivel"]
     calc --> p4["resumir_perfil"]
 
+    class md,esc,mun,join,nivel,form,cod,p1,p2,p3,p4 card
+
     style calc fill:#e8f5e9,stroke:#388e3c
     style form fill:#ffebee,stroke:#d32f2f
 ```
@@ -99,7 +114,9 @@ Três páginas em Streamlit. O app não lê dados nem conhece códigos do INEP �
 
 ```mermaid
 flowchart LR
-    login[Login] --> formulario["Formulário<br/>nota · UF · perfil"]
+    classDef card rx:10,ry:10
+
+    login["Login"] --> formulario["Formulário<br/>nota · UF · perfil"]
     formulario -->|"main.analisar(entrada)"| dash
 
     subgraph dash["Dashboard"]
@@ -110,6 +127,8 @@ flowchart LR
         t1["Tabela 1 · médias"]
         r1["Resumo"]
     end
+
+    class login,formulario,msg,g1,g2,t1,r1 card
 
     style login fill:#ffebee,stroke:#d32f2f
     style formulario fill:#ffebee,stroke:#d32f2f
