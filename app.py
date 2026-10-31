@@ -14,6 +14,9 @@ if __name__ == '__main__' and not st.runtime.exists():
 
 st.set_page_config(page_title='Posição no ENEM', layout='wide')
 
+# login desativado por enquanto: mude para True para voltar a exigir usuário e senha
+LOGIN_ATIVO = False
+
 # diferença (em pontos) até a qual o candidato é considerado "dentro da média"
 TOLERANCIA_MEDIA = 10.0
 
@@ -29,9 +32,12 @@ CAMPOS_PERFIL = {
 
 def iniciar_estado():
     if 'pagina' not in st.session_state:
-        st.session_state.pagina = 'login'
+        st.session_state.pagina = 'login' if LOGIN_ATIVO else 'formulario'
         st.session_state.usuario = None
         st.session_state.resultado = None
+    # sessão que já estava no login quando o flag foi desligado
+    if not LOGIN_ATIVO and st.session_state.pagina == 'login':
+        st.session_state.pagina = 'formulario'
 
 
 def ir_para(pagina: str):
@@ -219,6 +225,8 @@ def pagina_dashboard():
 iniciar_estado()
 
 with st.sidebar:
+    if not LOGIN_ATIVO:
+        st.caption('Login desativado')
     if st.session_state.usuario:
         st.write(f'Usuário: {st.session_state.usuario}')
         # atalho para o dashboard da última consulta (só faz sentido com um resultado)
