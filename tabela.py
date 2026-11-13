@@ -37,13 +37,17 @@ RENOMEAR_INSE_2019 = {
 
 @dataclass
 class Candidato:
-    """Perfil do candidato já em códigos dos microdados (decodificado pelo main.py)."""
+    """Perfil do candidato já em códigos dos microdados (decodificado pelo main.py).
+
+    Só a faixa etária é obrigatória; os demais campos ficam None quando o usuário
+    deixa o dropdown em branco, e aí não entram no filtro.
+    """
     faixa_etaria: int
-    sexo: str
-    cor_raca: int
-    nacionalidade: int
-    st_conclusao: int
-    ano_concluiu: int
+    sexo: str | None
+    cor_raca: int | None
+    nacionalidade: int | None
+    st_conclusao: int | None
+    ano_concluiu: int | None
     treineiro: int
 
 
@@ -301,13 +305,19 @@ def resumir_perfil(df_perfil: pl.DataFrame, coluna_nota: str) -> dict:
 
 
 def filtrar_candidato(df: pl.DataFrame, candidato: Candidato) -> pl.DataFrame:
-    """Candidatos com exatamente o mesmo perfil do usuário."""
-    return df.filter(
-        (pl.col('TP_FAIXA_ETARIA') == candidato.faixa_etaria)
-        & (pl.col('TP_SEXO') == candidato.sexo)
-        & (pl.col('TP_COR_RACA') == candidato.cor_raca)
-        & (pl.col('TP_NACIONALIDADE') == candidato.nacionalidade)
-        & (pl.col('TP_ST_CONCLUSAO') == candidato.st_conclusao)
-        & (pl.col('TP_ANO_CONCLUIU') == candidato.ano_concluiu)
-        & (pl.col('IN_TREINEIRO') == candidato.treineiro)
-    )
+    """Candidatos com o mesmo perfil do usuário nos campos que ele respondeu."""
+    condicoes = [
+        pl.col('TP_FAIXA_ETARIA') == candidato.faixa_etaria,
+        pl.col('IN_TREINEIRO') == candidato.treineiro,
+    ]
+    opcionais = {
+        'TP_SEXO': candidato.sexo,
+        'TP_COR_RACA': candidato.cor_raca,
+        'TP_NACIONALIDADE': candidato.nacionalidade,
+        'TP_ST_CONCLUSAO': candidato.st_conclusao,
+        'TP_ANO_CONCLUIU': candidato.ano_concluiu,
+    }
+    condicoes += [
+        pl.col(coluna) == valor for coluna, valor in opcionais.items() if valor is not None
+    ]
+    return df.filter(pl.all_horizontal(condicoes))

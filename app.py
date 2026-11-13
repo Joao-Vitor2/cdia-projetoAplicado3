@@ -22,11 +22,11 @@ TOLERANCIA_MEDIA = 10.0
 
 # rótulo no formulário -> variável do dicionário (as opções vêm do main.opcoes_formulario)
 CAMPOS_PERFIL = {
-    'sexo': ('Sexo', 'TP_SEXO'),
-    'cor_raca': ('Cor/raça', 'TP_COR_RACA'),
-    'nacionalidade': ('Nacionalidade', 'TP_NACIONALIDADE'),
-    'st_conclusao': ('Situação do Ensino Médio', 'TP_ST_CONCLUSAO'),
-    'ano_concluiu': ('Ano de conclusão do Ensino Médio', 'TP_ANO_CONCLUIU'),
+    'sexo': ('Sexo (opcional)', 'TP_SEXO'),
+    'cor_raca': ('Cor/raça (opcional)', 'TP_COR_RACA'),
+    'nacionalidade': ('Nacionalidade (opcional)', 'TP_NACIONALIDADE'),
+    'st_conclusao': ('Situação do Ensino Médio (opcional)', 'TP_ST_CONCLUSAO'),
+    'ano_concluiu': ('Ano de conclusão do Ensino Médio (opcional)', 'TP_ANO_CONCLUIU'),
 }
 
 
@@ -116,10 +116,6 @@ def pagina_formulario():
         return
     if idade is None:
         st.error('Informe a sua idade.')
-        return
-    faltando = [CAMPOS_PERFIL[campo][0] for campo, valor in perfil.items() if valor is None]
-    if faltando:
-        st.error(f'Preencha: {", ".join(faltando)}.')
         return
 
     entrada = {

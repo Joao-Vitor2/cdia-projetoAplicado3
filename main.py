@@ -136,14 +136,21 @@ def calcular_faixa_etaria(idade: int) -> int:
     return 11 + (idade - 26) // 5
 
 
+def _decodificar_opcional(variavel: str, descricao: str | None, converter=str):
+    """Decodifica o campo do perfil quando o usuário respondeu; None quando deixou em branco."""
+    if descricao is None:
+        return None
+    return converter(decodificar(variavel, descricao))
+
+
 def decodificar_candidato(entrada: dict) -> tabela.Candidato:
     return tabela.Candidato(
         faixa_etaria=calcular_faixa_etaria(entrada['idade']),
-        sexo=decodificar('TP_SEXO', entrada['sexo']),
-        cor_raca=int(decodificar('TP_COR_RACA', entrada['cor_raca'])),
-        nacionalidade=int(decodificar('TP_NACIONALIDADE', entrada['nacionalidade'])),
-        st_conclusao=int(decodificar('TP_ST_CONCLUSAO', entrada['st_conclusao'])),
-        ano_concluiu=int(decodificar('TP_ANO_CONCLUIU', entrada['ano_concluiu'])),
+        sexo=_decodificar_opcional('TP_SEXO', entrada['sexo']),
+        cor_raca=_decodificar_opcional('TP_COR_RACA', entrada['cor_raca'], int),
+        nacionalidade=_decodificar_opcional('TP_NACIONALIDADE', entrada['nacionalidade'], int),
+        st_conclusao=_decodificar_opcional('TP_ST_CONCLUSAO', entrada['st_conclusao'], int),
+        ano_concluiu=_decodificar_opcional('TP_ANO_CONCLUIU', entrada['ano_concluiu'], int),
         treineiro=1 if entrada['treineiro'] else 0,
     )
 
