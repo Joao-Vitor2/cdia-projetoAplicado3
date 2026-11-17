@@ -4,7 +4,10 @@ Todas as funções recebem DataFrames já lidos (pelo extrator_microdados.py) e 
 já decodificados em códigos (pelo main.py).
 """
 
+import math
+from bisect import bisect_left
 from dataclasses import dataclass
+from itertools import accumulate
 
 import polars as pl
 
@@ -20,6 +23,10 @@ NOMES_AREAS = {
 
 # abaixo disso o percentil/média fica instável e não é calculado
 MIN_CANDIDATOS = 30
+
+# largura (em pontos) das barras do histograma; a CDF interna usa 1 ponto por bin
+AMPLITUDE_BIN = 20
+LIMITE_NOTA = 1000
 
 # linha da planilha de municípios que representa o total (todas as redes, urbana + rural)
 REDE_TOTAL = 6
@@ -221,41 +228,66 @@ def calcular_media_por_nivel(df_nivel: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def medias_por_area(df_media_por_nivel: pl.DataFrame, nivel: str) -> dict[str, float | None]:
+    """Média de cada área no grupo INSE do usuário (para o bloco "desempenho por área")."""
+    linha = df_media_por_nivel.filter(pl.col('NIVEL_ESTIMADO') == nivel)
+    if linha.height == 0:
+        return {}
+    return {
+        area: linha[coluna.replace('NU_NOTA', 'MEDIA')][0]
+        for coluna, area in NOMES_AREAS.items()
+    }
+
+
 def medias_por_uf(df_nivel: pl.DataFrame, df_inse_municipios: pl.DataFrame) -> pl.DataFrame:
-    """Média de cada área por UF de residência de prova (formato longo: NO_UF, AREA, MEDIA)."""
+    """Média e nº de candidatos de cada área por UF (formato longo: NO_UF, AREA, MEDIA).
+
+    A contagem é feita por área: quem faltou à prova não entra na média nem no total dela.
+    """
     df = (
         df_nivel
         .group_by('CO_UF_REF')
         .agg(
-            pl.len().alias('CANDIDATOS'),
             *[pl.col(coluna).mean().round(1).alias(coluna) for coluna in COLUNAS_NOTA],
+            *[pl.col(coluna).count().alias(f'QTD_{coluna}') for coluna in COLUNAS_NOTA],
         )
         .join(ufs(df_inse_municipios), left_on='CO_UF_REF', right_on='CO_UF', how='inner')
     )
-    return df.unpivot(
-        COLUNAS_NOTA, index=['NO_UF', 'CANDIDATOS'],
-        variable_name='COLUNA', value_name='MEDIA',
-    ).with_columns(
-        pl.col('COLUNA').replace_strict(NOMES_AREAS).alias('AREA'),
-    ).drop('COLUNA')
+    medias = (
+        df.unpivot(COLUNAS_NOTA, index=['NO_UF'], variable_name='COLUNA', value_name='MEDIA')
+        .with_columns(pl.col('COLUNA').replace_strict(NOMES_AREAS).alias('AREA'))
+        .drop('COLUNA')
+    )
+    contagens = (
+        df.unpivot(
+            [f'QTD_{coluna}' for coluna in COLUNAS_NOTA], index=['NO_UF'],
+            variable_name='COLUNA', value_name='CANDIDATOS',
+        )
+        .with_columns(pl.col('COLUNA').str.replace('QTD_', '').replace_strict(NOMES_AREAS).alias('AREA'))
+        .drop('COLUNA')
+    )
+    return medias.join(contagens, on=['NO_UF', 'AREA'], how='left')
 
 
 def medias_por_municipio(
     df_nivel: pl.DataFrame,
     df_inse_municipios: pl.DataFrame,
     co_uf: int,
-    top: int = 15,
 ) -> pl.DataFrame:
-    """Média de cada área nos municípios com mais candidatos dentro de uma UF (formato longo)."""
-    df = (
+    """Média por área de *todos* os municípios da UF, com ranking dos elegíveis.
+
+    Cada área tem sua contagem própria (quem faltou à prova não entra na média dela).
+    O ranking considera só municípios com MIN_CANDIDATOS naquela área.
+    """
+    base = (
         df_nivel
         .filter(pl.col('CO_UF_REF') == co_uf)
         .group_by('CO_MUNICIPIO_REF')
         .agg(
-            pl.len().alias('CANDIDATOS'),
+            pl.len().alias('TOTAL_MUNICIPIO'),
             *[pl.col(coluna).mean().round(1).alias(coluna) for coluna in COLUNAS_NOTA],
+            *[pl.col(coluna).count().alias(f'QTD_{coluna}') for coluna in COLUNAS_NOTA],
         )
-        .filter(pl.col('CANDIDATOS') >= MIN_CANDIDATOS)
         .join(
             df_inse_municipios.select('CO_MUNICIPIO', 'NO_MUNICIPIO'),
             left_on='CO_MUNICIPIO_REF', right_on='CO_MUNICIPIO', how='left',
@@ -263,15 +295,123 @@ def medias_por_municipio(
         .with_columns(
             pl.coalesce('NO_MUNICIPIO', pl.col('CO_MUNICIPIO_REF').cast(pl.String)).alias('MUNICIPIO'),
         )
-        .sort('CANDIDATOS', descending=True)
-        .head(top)
+        .drop('NO_MUNICIPIO')
     )
-    return df.unpivot(
-        COLUNAS_NOTA, index=['MUNICIPIO', 'CANDIDATOS'],
-        variable_name='COLUNA', value_name='MEDIA',
-    ).with_columns(
-        pl.col('COLUNA').replace_strict(NOMES_AREAS).alias('AREA'),
-    ).drop('COLUNA')
+
+    medias = (
+        base.unpivot(
+            COLUNAS_NOTA, index=['CO_MUNICIPIO_REF', 'MUNICIPIO', 'TOTAL_MUNICIPIO'],
+            variable_name='COLUNA', value_name='MEDIA',
+        )
+        .with_columns(pl.col('COLUNA').replace_strict(NOMES_AREAS).alias('AREA'))
+        .drop('COLUNA')
+    )
+    contagens = (
+        base.unpivot(
+            [f'QTD_{coluna}' for coluna in COLUNAS_NOTA], index=['CO_MUNICIPIO_REF'],
+            variable_name='COLUNA', value_name='CANDIDATOS',
+        )
+        .with_columns(pl.col('COLUNA').str.replace('QTD_', '').replace_strict(NOMES_AREAS).alias('AREA'))
+        .drop('COLUNA')
+    )
+
+    longo = medias.join(contagens, on=['CO_MUNICIPIO_REF', 'AREA'], how='left').with_columns(
+        (pl.col('CANDIDATOS') >= MIN_CANDIDATOS).alias('ELEGIVEL'),
+    )
+    ranking = (
+        longo
+        .filter(pl.col('ELEGIVEL'))
+        .with_columns(
+            pl.col('MEDIA').rank('ordinal', descending=True).over('AREA').cast(pl.Int32).alias('RANK'),
+            pl.len().over('AREA').cast(pl.Int32).alias('TOTAL_ELEGIVEIS'),
+        )
+        .select('CO_MUNICIPIO_REF', 'AREA', 'RANK', 'TOTAL_ELEGIVEIS')
+    )
+    return longo.join(ranking, on=['CO_MUNICIPIO_REF', 'AREA'], how='left')
+
+
+# ---------------------------------------------------------------- distribuição (histograma + metas)
+
+def _cdf_das_notas(notas: pl.Series) -> list[int]:
+    """Contagem acumulada por nota inteira: cdf[k] = candidatos com nota < k + 1."""
+    contagens = [0] * (LIMITE_NOTA + 1)
+    bins = notas.floor().cast(pl.Int32).to_frame('BIN').group_by('BIN').len()
+    for valor, quantidade in bins.iter_rows():
+        contagens[min(int(valor), LIMITE_NOTA)] += quantidade
+    return list(accumulate(contagens))
+
+
+def _bins_para_grafico(notas: pl.Series) -> pl.DataFrame:
+    """Contagem por faixa de AMPLITUDE_BIN pontos, já em % de candidatos."""
+    df = (
+        notas.floor().cast(pl.Int32).to_frame('NOTA')
+        .with_columns((pl.col('NOTA') // AMPLITUDE_BIN * AMPLITUDE_BIN).alias('INICIO'))
+        .group_by('INICIO').len().rename({'len': 'CANDIDATOS'})
+        .sort('INICIO')
+    )
+    total = df['CANDIDATOS'].sum()
+    return df.with_columns(
+        (pl.col('INICIO') + AMPLITUDE_BIN).alias('FIM'),
+        (pl.col('CANDIDATOS') * 100 / total).round(2).alias('PERCENTUAL'),
+    )
+
+
+def _nota_do_quantil(cdf: list[int], quantil: float) -> int:
+    """Nota que deixa `quantil` dos candidatos abaixo dela (P50, P75, P90...)."""
+    return bisect_left(cdf, quantil * cdf[-1])
+
+
+def percentil_da_nota(cdf: list[int], nota: float) -> float:
+    """Percentil de uma nota na CDF pré-calculada (usado pelo simulador)."""
+    indice = min(max(math.ceil(float(nota)) - 1, 0), len(cdf) - 1)
+    return round(cdf[indice] * 100 / cdf[-1], 1)
+
+
+def distribuicao_escopos(
+    df_nivel: pl.DataFrame,
+    coluna_nota: str,
+    nivel: str,
+    co_uf: int,
+) -> dict:
+    """Histograma, CDF e estatísticas da nota do usuário em cada escala de comparação.
+
+    Devolve {'grupo'|'uf'|'brasil': {'bins', 'cdf', 'estatisticas', 'quantis'}}.
+    Tudo pré-agregado: o slider e o gráfico só leem esses números.
+    """
+    filtros = {
+        'grupo': pl.col('NIVEL_ESTIMADO') == nivel,
+        'uf': pl.col('CO_UF_REF') == co_uf,
+        'brasil': pl.lit(True),
+    }
+
+    resultado = {}
+    for escopo, filtro in filtros.items():
+        notas = df_nivel.filter(filtro)[coluna_nota].drop_nulls()
+        if notas.len() < MIN_CANDIDATOS:
+            continue
+
+        cdf = _cdf_das_notas(notas)
+        resultado[escopo] = {
+            'bins': _bins_para_grafico(notas),
+            'cdf': cdf,
+            'estatisticas': {
+                'candidatos': notas.len(),
+                'media': round(notas.mean(), 1),
+                'mediana': round(notas.median(), 1),
+                'minimo': round(notas.min(), 1),
+                'maximo': round(notas.max(), 1),
+                'p10': _nota_do_quantil(cdf, 0.10),
+                'p25': _nota_do_quantil(cdf, 0.25),
+                'p75': _nota_do_quantil(cdf, 0.75),
+                'p90': _nota_do_quantil(cdf, 0.90),
+            },
+            'quantis': {
+                'p50': _nota_do_quantil(cdf, 0.50),
+                'p75': _nota_do_quantil(cdf, 0.75),
+                'p90': _nota_do_quantil(cdf, 0.90),
+            },
+        }
+    return resultado
 
 
 def distribuicao_notas(df_nivel: pl.DataFrame) -> pl.DataFrame:

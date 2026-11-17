@@ -1,62 +1,154 @@
-"""Gráfico 3: distribuição de notas por área — média, mediana e faixa P25–P75.
+"""Histograma da distribuição de notas, com a posição do candidato em destaque.
 
-Só desenha; o cálculo vem pronto de tabela.distribuicao_notas (via main.analisar).
+Só desenha: os bins, a CDF e as estatísticas vêm prontos de tabela.distribuicao_escopos
+(via main.analisar). Um ponto por faixa de 10 pontos, então o gráfico nunca recebe
+milhões de linhas.
 """
 
 import altair as alt
 import polars as pl
 
+import formatacao as fmt
+from graficos.paleta import COR_CONTEXTO, COR_REFERENCIA, COR_TEXTO, COR_USUARIO
 
-def grafico_distribuicao(df_dist: pl.DataFrame, nota_usuario: float | None, area_usuario: str) -> alt.LayerChart:
-    base = alt.Chart(df_dist).encode(
-        x=alt.X('AREA:N', title=None, sort=list(df_dist['AREA'])),
+ALTURA = 340
+
+
+def _inicio_visivel(bins: pl.DataFrame, percentual_corte: float = 1.0) -> int:
+    """Primeira faixa que deixa `percentual_corte`% dos candidatos para trás.
+
+    As notas muito baixas (menos de 1% dos candidatos) ficam fora do eixo para o
+    histograma não virar uma parede de barras vazias perto do zero.
+    """
+    acumulado = 0.0
+    for inicio, percentual in bins.select('INICIO', 'PERCENTUAL').iter_rows():
+        acumulado += percentual
+        if acumulado >= percentual_corte:
+            return int(inicio)
+    return int(bins['INICIO'].min())
+
+
+def _rotulo_faixa(inicio: int, fim: int) -> str:
+    return f'{fmt.inteiro(inicio)} a {fmt.inteiro(fim)} pontos'
+
+
+def grafico_histograma(dados: dict, nota: float, area: str) -> alt.LayerChart:
+    """Barras em % de candidatos, faixa P25–P75, média/mediana e a linha da nota do usuário."""
+    bins = dados['bins']
+    estatisticas = dados['estatisticas']
+
+    inicio = _inicio_visivel(bins)
+    fim = int(bins['FIM'].max())
+    altura_max = float(bins['PERCENTUAL'].max())
+    escala_x = alt.Scale(domain=[inicio, fim], nice=False)
+
+    visiveis = (
+        bins
+        .filter(pl.col('INICIO') >= inicio)
+        .with_columns(
+            pl.when(pl.col('INICIO') < nota).then(pl.lit('Abaixo de você')).otherwise(pl.lit('Acima de você')).alias('LADO'),
+        )
+    )
+    visiveis = pl.DataFrame([
+        {
+            'INICIO': linha['INICIO'],
+            'FIM': linha['FIM'],
+            'PERCENTUAL': linha['PERCENTUAL'],
+            'LADO': linha['LADO'],
+            'FAIXA': _rotulo_faixa(linha['INICIO'], linha['FIM']),
+            'PERCENTUAL_TEXTO': fmt.percentual(linha['PERCENTUAL'], 1),
+            'CANDIDATOS_TEXTO': fmt.inteiro(linha['CANDIDATOS']),
+        }
+        for linha in visiveis.iter_rows(named=True)
+    ])
+
+    base = alt.Chart(visiveis).encode(
+        x=alt.X(
+            'INICIO:Q', title=f'Nota em {area}',
+            scale=escala_x,
+            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor='#2a2f3a'),
+        ),
+        x2='FIM:Q',
+        y=alt.Y(
+            'PERCENTUAL:Q', title='% de candidatos',
+            scale=alt.Scale(domain=[0, altura_max * 1.24], nice=False),
+            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor='#2a2f3a'),
+        ),
     )
 
-    # caixa: metade central dos candidatos (P25 a P75)
-    caixa = base.mark_bar(size=40, opacity=0.35, color='#4c78a8').encode(
-        y=alt.Y('P25:Q', title='Nota', scale=alt.Scale(zero=False)),
-        y2=alt.Y2('P75:Q'),
+    barras = base.mark_bar().encode(
+        color=alt.Color(
+            'LADO:N',
+            scale=alt.Scale(domain=['Abaixo de você', 'Acima de você'], range=[COR_USUARIO, COR_REFERENCIA]),
+            legend=None,
+        ),
+        opacity=alt.value(0.6),
         tooltip=[
-            alt.Tooltip('AREA:N', title='Área'),
-            alt.Tooltip('MEDIA:Q', title='Média', format='.1f'),
-            alt.Tooltip('MEDIANA:Q', title='Mediana', format='.1f'),
-            alt.Tooltip('P10:Q', title='P10', format='.0f'),
-            alt.Tooltip('P25:Q', title='P25', format='.0f'),
-            alt.Tooltip('P75:Q', title='P75', format='.0f'),
-            alt.Tooltip('P90:Q', title='P90', format='.0f'),
-            alt.Tooltip('CANDIDATOS:Q', title='Candidatos', format=',d'),
+            alt.Tooltip('FAIXA:N', title='Notas'),
+            alt.Tooltip('PERCENTUAL_TEXTO:N', title='Fatia dos candidatos'),
+            alt.Tooltip('CANDIDATOS_TEXTO:N', title='Candidatos'),
         ],
     )
 
-    # haste: 80% central dos candidatos (P10 a P90)
-    haste = base.mark_rule(color='#4c78a8', opacity=0.7).encode(
-        y='P10:Q',
-        y2='P90:Q',
+    # metade central dos candidatos (P25 a P75)
+    faixa = (
+        alt.Chart(pl.DataFrame({
+            'INICIO': [estatisticas['p25']],
+            'FIM': [estatisticas['p75']],
+            'RÓTULO': ['Metade central (P25–P75)'],
+        }))
+        .mark_rect(opacity=0.16)
+        .encode(
+            x=alt.X('INICIO:Q', scale=escala_x),
+            x2='FIM:Q',
+            color=alt.Color(
+                'RÓTULO:N',
+                scale=alt.Scale(domain=['Metade central (P25–P75)'], range=[COR_CONTEXTO]),
+                legend=alt.Legend(title=None, orient='top', labelColor=COR_TEXTO),
+            ),
+        )
     )
-    mediana = base.mark_tick(color='#00355e', thickness=2, size=28).encode(y='MEDIANA:Q')
-    media = base.mark_point(shape='diamond', color='#e45756', size=60).encode(y='MEDIA:Q')
 
-    grafico = caixa + haste + mediana + media
+    # média e mediana: linhas pontilhadas, com legenda
+    linhas_referencia = (
+        alt.Chart(pl.DataFrame({
+            'RÓTULO': ['Média', 'Mediana'],
+            'VALOR': [estatisticas['media'], estatisticas['mediana']],
+            'VALOR_TEXTO': [fmt.numero(estatisticas['media']), fmt.numero(estatisticas['mediana'])],
+        }))
+        .mark_rule(strokeDash=[5, 4], strokeWidth=1.5)
+        .encode(
+            x=alt.X('VALOR:Q', scale=escala_x),
+            color=alt.Color(
+                'RÓTULO:N',
+                scale=alt.Scale(domain=['Média', 'Mediana'], range=[COR_CONTEXTO, '#f2c14e']),
+                legend=alt.Legend(title=None, orient='top', labelColor=COR_TEXTO),
+            ),
+            tooltip=[
+                alt.Tooltip('RÓTULO:N', title=''),
+                alt.Tooltip('VALOR_TEXTO:N', title='Nota'),
+            ],
+        )
+    )
 
-    # marca a nota do usuário na área que ele escolheu no formulário
-    if nota_usuario is not None:
-        linhas = df_dist.filter(pl.col('AREA') == area_usuario)
-        if not linhas.is_empty():
-            marco = alt.Chart(pl.DataFrame({'NOTA': [nota_usuario], 'AREA': [area_usuario]})).mark_point(
-                shape='triangle-down', color='#e45756', size=120, filled=True,
-            ).encode(x=alt.X('AREA:N'), y=alt.Y('NOTA:Q'))
-            grafico = grafico + marco
+    # a nota do usuário: linha cheia na cor de destaque
+    linha_usuario = (
+        alt.Chart(pl.DataFrame({'VALOR': [nota]}))
+        .mark_rule(color=COR_USUARIO, strokeWidth=3)
+        .encode(x=alt.X('VALOR:Q', scale=escala_x))
+    )
+    rotulo_usuario = (
+        alt.Chart(pl.DataFrame({
+            'X': [nota],
+            'Y': [altura_max * 1.15],
+            'TEXTO': [f'Você: {fmt.numero(nota, 0)}'],
+        }))
+        .mark_text(align='left', dx=6, color=COR_USUARIO, fontSize=12, fontWeight='bold')
+        .encode(x=alt.X('X:Q', scale=escala_x), y=alt.Y('Y:Q'), text='TEXTO:N')
+    )
 
-    return grafico.properties(height=380)
-
-
-def frase_distribuicao(df_dist: pl.DataFrame, area_usuario: str, escopo: str) -> str:
-    onde = 'no Brasil' if escopo == 'Brasil' else 'na sua UF'
-    linha = df_dist.filter(pl.col('AREA') == area_usuario)
-    if linha.is_empty():
-        return f'Não há candidatos suficientes {onde} para {area_usuario}.'
     return (
-        f'{onde[0].upper()}{onde[1:]}, {area_usuario} teve média de {linha["MEDIA"][0]:.1f} e mediana de '
-        f'{linha["MEDIANA"][0]:.1f} pontos; a metade central dos candidatos ficou entre '
-        f'{linha["P25"][0]:.0f} e {linha["P75"][0]:.0f} pontos.'
+        alt.layer(faixa, barras, linhas_referencia, linha_usuario, rotulo_usuario)
+        .resolve_scale(color='independent')
+        .properties(height=ALTURA)
     )

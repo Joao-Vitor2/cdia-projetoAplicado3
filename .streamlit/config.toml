@@ -1,0 +1,9 @@
+[theme]
+# tema fixo: os rótulos dos gráficos foram desenhados para fundo escuro
+base = "dark"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

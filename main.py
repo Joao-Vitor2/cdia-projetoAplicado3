@@ -81,6 +81,13 @@ def _rotulos_municipios() -> tuple[list[str], dict[str, int]]:
     return rotulos, dict(zip(rotulos, df['CO_MUNICIPIO'].to_list()))
 
 
+@cache
+def _nomes_municipios() -> dict[int, str]:
+    """Código IBGE -> nome do município (para mostrar o município do usuário sem novo selectbox."""
+    _, df_municipios = _inse()
+    return dict(zip(df_municipios['CO_MUNICIPIO'].to_list(), df_municipios['NO_MUNICIPIO'].to_list()))
+
+
 # ---------------------------------------------------------------- decodificação (texto do app -> código)
 
 def _normalizar(texto: str) -> str:
@@ -157,11 +164,6 @@ def decodificar_candidato(entrada: dict) -> tabela.Candidato:
 
 # ---------------------------------------------------------------- interface com o app
 
-def autenticar(usuario: str, senha: str) -> bool:
-    # TODO: validar usuário e senha de verdade
-    return bool(usuario) and bool(senha)
-
-
 def opcoes_formulario() -> dict:
     """Valores fixos que o app mostra como dropdown."""
     _, df_municipios = _inse()
@@ -201,20 +203,32 @@ def analisar(entrada: dict) -> dict:
     df_escolas, df_municipios = _inse()
     df_nivel = _df_nivel()
     nivel, fonte_nivel = tabela.nivel_usuario(df_escolas, df_municipios, co_municipio, entrada['co_escola'])
+    media_por_nivel = tabela.calcular_media_por_nivel(df_nivel)
+    estatisticas_areas = tabela.distribuicao_notas(df_nivel)
 
     return {
         'ano': ano_atual(),
         'fonte_nivel': fonte_nivel,
+        'nivel': nivel,
+        'co_municipio': co_municipio,
+        'municipio': _nomes_municipios().get(co_municipio, str(co_municipio)),
         'posicao': tabela.estimar_posicao_candidato(df_nivel, coluna_nota, entrada['nota'], nivel),
         'percentis': tabela.calcular_percentis(df_nivel, coluna_nota, entrada['nota'], nivel, co_uf),
-        'media_por_nivel': tabela.calcular_media_por_nivel(df_nivel),
         'perfil': tabela.resumir_perfil(tabela.filtrar_candidato(df_nivel, candidato), coluna_nota),
+        'media_por_area': tabela.medias_por_area(media_por_nivel, nivel),
+        'estatisticas_areas': estatisticas_areas,
+        'medias_brasil': dict(zip(estatisticas_areas['AREA'], estatisticas_areas['MEDIA'])),
+        'distribuicao_escopos': tabela.distribuicao_escopos(df_nivel, coluna_nota, nivel, co_uf),
         'uf': entrada['uf'],
         'area': entrada['area'],
         'medias_uf': tabela.medias_por_uf(df_nivel, df_municipios),
         'medias_municipio': tabela.medias_por_municipio(df_nivel, df_municipios, co_uf),
-        'distribuicao': {
-            'Brasil': tabela.distribuicao_notas(df_nivel),
-            'Sua UF': tabela.distribuicao_notas(df_nivel.filter(pl.col('CO_UF_REF') == co_uf)),
-        },
     }
+
+
+def percentil_estimado(distribuicao_escopos: dict, escopo: str, nota: float) -> float | None:
+    """Percentil de uma nota nas distribuições já calculadas (usado pelo simulador, sem recalcular)."""
+    dados = distribuicao_escopos.get(escopo)
+    if dados is None:
+        return None
+    return tabela.percentil_da_nota(dados['cdf'], nota)
