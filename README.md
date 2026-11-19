@@ -65,7 +65,7 @@ O app usa sempre o ano mais recente que já foi extraído. Se nenhum ano foi ext
 
 ## Como adicionar uma análise no dashboard
 
-Cada integrante é dono de **um** dos quatro espaços do dashboard (Gráfico 1 = percentil, já feito). Para não haver conflito no Git, cada um mexe só nos seus arquivos e no seu espaço.
+Cada integrante é dono de **um** dos quatro espaços do dashboard. Já estão feitos: Gráfico 1 (percentil, `graficos/percentil.py`), Gráfico 2 (médias por UF e município, `graficos/regional.py`) e Gráfico 3 (distribuição de notas por área, `graficos/distribuicao.py`). Para não haver conflito no Git, cada um mexe só nos seus arquivos e no seu espaço.
 
 O caminho é sempre o mesmo, em quatro passos. O exemplo abaixo cria o gráfico "média do grupo INSE por área".
 
@@ -117,7 +117,7 @@ Dentro de `analisar()` você já tem:
 | `coluna_nota` | coluna da área escolhida (ex.: `'NU_NOTA_MT'`) |
 | `co_uf` | código da UF escolhida |
 | `candidato` | perfil do usuário em códigos (`tabela.Candidato`) |
-| `entrada` | o que veio do formulário, ex.: `entrada['nota']`, `entrada['co_municipio']` |
+| `entrada` | o que veio do formulário, ex.: `entrada['nota']`, `entrada['municipio']` |
 
 Se a análise precisar de um **campo novo no formulário**:
 1. Adicione o campo no `app.py`, em `pagina_formulario()`, e coloque o valor em `entrada`.

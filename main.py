@@ -12,13 +12,7 @@ import extrator_microdados as extrator
 import tabela
 
 # nome mostrado no app -> coluna de nota nos microdados
-AREAS_NOTA = {
-    'Ciências da Natureza': 'NU_NOTA_CN',
-    'Ciências Humanas': 'NU_NOTA_CH',
-    'Linguagens e Códigos': 'NU_NOTA_LC',
-    'Matemática': 'NU_NOTA_MT',
-    'Redação': 'NU_NOTA_REDACAO',
-}
+AREAS_NOTA = {nome: coluna for coluna, nome in tabela.NOMES_AREAS.items()}
 
 # variáveis do perfil do candidato que viram dropdowns no formulário (valores vêm do dicionário)
 VARIAVEIS_PERFIL = ['TP_SEXO', 'TP_COR_RACA', 'TP_NACIONALIDADE', 'TP_ST_CONCLUSAO', 'TP_ANO_CONCLUIU']
@@ -68,6 +62,25 @@ def _df_nivel() -> pl.DataFrame:
     return tabela.resultados_nivel(df_microdados, df_escolas, df_municipios)
 
 
+@cache
+def _municipios_normalizados() -> pl.DataFrame:
+    """Municípios com nome, UF e código normalizados (sem acento), para a busca do formulário."""
+    df = tabela.municipios(_inse()[1])
+    return df.with_columns(
+        pl.col('NO_MUNICIPIO').map_elements(_normalizar, return_dtype=pl.String).alias('NORM_NOME'),
+        pl.col('NO_UF').map_elements(_normalizar, return_dtype=pl.String).alias('NORM_UF'),
+        pl.col('CO_MUNICIPIO').cast(pl.String).alias('CODIGO'),
+    )
+
+
+@cache
+def _rotulos_municipios() -> tuple[list[str], dict[str, int]]:
+    """Rótulos 'Nome (UF) — código IBGE' de todos os municípios com INSE, para o selectbox do formulário."""
+    df = _municipios_normalizados()
+    rotulos = [_rotulo_municipio(nome, uf, codigo) for codigo, nome, _, uf, *_ in df.iter_rows()]
+    return rotulos, dict(zip(rotulos, df['CO_MUNICIPIO'].to_list()))
+
+
 # ---------------------------------------------------------------- decodificação (texto do app -> código)
 
 def _normalizar(texto: str) -> str:
@@ -98,6 +111,18 @@ def decodificar_uf(nome_uf: str) -> int:
     return int(linha['CO_UF'][0])
 
 
+def decodificar_municipio(rotulo: str) -> int:
+    """Converte o rótulo 'Nome (UF) — código' escolhido no app no código IBGE do município."""
+    _, mapa = _rotulos_municipios()
+    if rotulo not in mapa:
+        raise ValueError(f"Município '{rotulo}' não encontrado.")
+    return int(mapa[rotulo])
+
+
+def _rotulo_municipio(nome: str, uf: str, codigo: int) -> str:
+    return f'{nome} ({uf}) — {codigo}'
+
+
 def calcular_faixa_etaria(idade: int) -> int:
     """Converte a idade em anos no código de TP_FAIXA_ETARIA."""
     if idade < 17:
@@ -111,14 +136,21 @@ def calcular_faixa_etaria(idade: int) -> int:
     return 11 + (idade - 26) // 5
 
 
+def _decodificar_opcional(variavel: str, descricao: str | None, converter=str):
+    """Decodifica o campo do perfil quando o usuário respondeu; None quando deixou em branco."""
+    if descricao is None:
+        return None
+    return converter(decodificar(variavel, descricao))
+
+
 def decodificar_candidato(entrada: dict) -> tabela.Candidato:
     return tabela.Candidato(
         faixa_etaria=calcular_faixa_etaria(entrada['idade']),
-        sexo=decodificar('TP_SEXO', entrada['sexo']),
-        cor_raca=int(decodificar('TP_COR_RACA', entrada['cor_raca'])),
-        nacionalidade=int(decodificar('TP_NACIONALIDADE', entrada['nacionalidade'])),
-        st_conclusao=int(decodificar('TP_ST_CONCLUSAO', entrada['st_conclusao'])),
-        ano_concluiu=int(decodificar('TP_ANO_CONCLUIU', entrada['ano_concluiu'])),
+        sexo=_decodificar_opcional('TP_SEXO', entrada['sexo']),
+        cor_raca=_decodificar_opcional('TP_COR_RACA', entrada['cor_raca'], int),
+        nacionalidade=_decodificar_opcional('TP_NACIONALIDADE', entrada['nacionalidade'], int),
+        st_conclusao=_decodificar_opcional('TP_ST_CONCLUSAO', entrada['st_conclusao'], int),
+        ano_concluiu=_decodificar_opcional('TP_ANO_CONCLUIU', entrada['ano_concluiu'], int),
         treineiro=1 if entrada['treineiro'] else 0,
     )
 
@@ -142,19 +174,33 @@ def opcoes_formulario() -> dict:
     }
 
 
+def opcoes_municipios(uf: str | None = None) -> list[str]:
+    """Rótulos 'Nome (UF) — código IBGE' dos municípios para o selectbox do formulário.
+
+    Com uma UF escolhida, só os municípios dela; sem UF, todos os 5,5 mil com INSE.
+    """
+    if not uf:
+        return _rotulos_municipios()[0]
+
+    df = _municipios_normalizados().filter(pl.col('NORM_UF') == _normalizar(uf))
+    return [_rotulo_municipio(nome, uf_nome, codigo) for codigo, nome, _, uf_nome, *_ in df.iter_rows()]
+
+
 def analisar(entrada: dict) -> dict:
     """Recebe o formulário do app (textos e números) e devolve tudo que o dashboard precisa.
 
-    entrada: area, nota, uf, co_municipio, co_escola (ou None), idade, sexo, cor_raca,
-             nacionalidade, st_conclusao, ano_concluiu, treineiro
+    entrada: area, nota, uf, municipio (rótulo 'Nome (UF) — código' do selectbox),
+             co_escola (ou None), idade, sexo, cor_raca, nacionalidade, st_conclusao,
+             ano_concluiu, treineiro
     """
     coluna_nota = AREAS_NOTA[entrada['area']]
     co_uf = decodificar_uf(entrada['uf'])
+    co_municipio = decodificar_municipio(entrada['municipio'])
     candidato = decodificar_candidato(entrada)
 
     df_escolas, df_municipios = _inse()
     df_nivel = _df_nivel()
-    nivel, fonte_nivel = tabela.nivel_usuario(df_escolas, df_municipios, entrada['co_municipio'], entrada['co_escola'])
+    nivel, fonte_nivel = tabela.nivel_usuario(df_escolas, df_municipios, co_municipio, entrada['co_escola'])
 
     return {
         'ano': ano_atual(),
@@ -163,4 +209,12 @@ def analisar(entrada: dict) -> dict:
         'percentis': tabela.calcular_percentis(df_nivel, coluna_nota, entrada['nota'], nivel, co_uf),
         'media_por_nivel': tabela.calcular_media_por_nivel(df_nivel),
         'perfil': tabela.resumir_perfil(tabela.filtrar_candidato(df_nivel, candidato), coluna_nota),
+        'uf': entrada['uf'],
+        'area': entrada['area'],
+        'medias_uf': tabela.medias_por_uf(df_nivel, df_municipios),
+        'medias_municipio': tabela.medias_por_municipio(df_nivel, df_municipios, co_uf),
+        'distribuicao': {
+            'Brasil': tabela.distribuicao_notas(df_nivel),
+            'Sua UF': tabela.distribuicao_notas(df_nivel.filter(pl.col('CO_UF_REF') == co_uf)),
+        },
     }
