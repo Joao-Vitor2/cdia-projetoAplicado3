@@ -9,6 +9,7 @@ import polars as pl
 
 def _grafico_barras(df: pl.DataFrame, coluna_grupo: str, grupo_destaque: str | None) -> alt.Chart:
     dados = df.sort('MEDIA', descending=True)
+    selecao = alt.selection_point(fields=[coluna_grupo], name='sel')
     base = alt.Chart(dados).encode(
         y=alt.Y(f'{coluna_grupo}:N', title=None, sort=list(dados[coluna_grupo])),
         x=alt.X('MEDIA:Q', title='Média'),
@@ -23,7 +24,7 @@ def _grafico_barras(df: pl.DataFrame, coluna_grupo: str, grupo_destaque: str | N
             alt.value('#4c78a8'),
         ),
     )
-    return base.mark_bar(cornerRadiusEnd=4, size=16)
+    return base.mark_bar(cornerRadiusEnd=4, size=16).add_params(selecao)
 
 
 def grafico_medias_uf(df_medias_uf: pl.DataFrame, area: str, uf_usuario: str) -> alt.Chart:

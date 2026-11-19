@@ -1,10 +1,28 @@
 import sys
+from functools import cache
+from pathlib import Path
 
 import polars as pl
 import streamlit as st
 
 import main
 from graficos import distribuicao, percentil, regional
+
+UF_SIGLAS = {
+    'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM', 'Bahia': 'BA',
+    'Ceará': 'CE', 'Distrito Federal': 'DF', 'Espírito Santo': 'ES', 'Goiás': 'GO',
+    'Maranhão': 'MA', 'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG',
+    'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', 'Pernambuco': 'PE', 'Piauí': 'PI',
+    'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN', 'Rio Grande do Sul': 'RS',
+    'Rondônia': 'RO', 'Roraima': 'RR', 'Santa Catarina': 'SC', 'São Paulo': 'SP',
+    'Sergipe': 'SE', 'Tocantins': 'TO',
+}
+
+
+@cache
+def _universidades_federais() -> pl.DataFrame:
+    csv = Path(__file__).parent / 'universidades_federais_brasil.csv'
+    return pl.read_csv(csv)
 
 # permite rodar com "python app.py" (ex.: botão Run do VSCode), relançando via "streamlit run"
 if __name__ == '__main__' and not st.runtime.exists():
@@ -149,6 +167,42 @@ def mensagem_posicao(posicao: dict):
         st.info(f'Você está dentro da média ({diferenca:+.1f} pontos).')
 
 
+def _mostrar_universidades_uf(evento):
+    pontos = evento.selection.get('sel', []) if evento else []
+    if not pontos:
+        st.caption('Clique em uma UF para ver as universidades federais dela.')
+        return
+    nome_uf = pontos[0].get('NO_UF', '')
+    sigla = UF_SIGLAS.get(nome_uf)
+    if not sigla:
+        return
+    df = _universidades_federais().filter(pl.col('UF') == sigla)
+    if df.is_empty():
+        st.info(f'Nenhuma universidade federal encontrada em {nome_uf}.')
+    else:
+        st.markdown(f'**Universidades federais em {nome_uf} ({sigla}):**')
+        st.dataframe(
+            df.select('Nome', 'Sigla', 'Municipio').rename({'Municipio': 'Município'}),
+            hide_index=True,
+        )
+
+
+def _mostrar_universidades_municipio(evento):
+    pontos = evento.selection.get('sel', []) if evento else []
+    if not pontos:
+        st.caption('Clique em um município para ver as universidades federais dele.')
+        return
+    nome_municipio = pontos[0].get('MUNICIPIO', '')
+    if not nome_municipio:
+        return
+    df = _universidades_federais().filter(pl.col('Municipio') == nome_municipio)
+    if df.is_empty():
+        st.info(f'Nenhuma universidade federal encontrada em {nome_municipio}.')
+    else:
+        st.markdown(f'**Universidades federais em {nome_municipio}:**')
+        st.dataframe(df.select('Nome', 'Sigla', 'UF'), hide_index=True)
+
+
 def pagina_dashboard():
     st.title('Dashboard')
 
@@ -175,10 +229,13 @@ def pagina_dashboard():
         st.caption(regional.frase_regional(resultado['medias_uf'], area_regional, resultado['uf']))
         aba_ufs, aba_municipios = st.tabs(['UFs', f'Municípios de {resultado["uf"]}'])
         with aba_ufs:
-            st.altair_chart(
+            evento_uf = st.altair_chart(
                 regional.grafico_medias_uf(resultado['medias_uf'], area_regional, resultado['uf']),
                 width='stretch',
+                on_select='rerun',
+                key='grafico_uf',
             )
+            _mostrar_universidades_uf(evento_uf)
         with aba_municipios:
             grafico_municipios = regional.grafico_medias_municipio(
                 resultado['medias_municipio'], area_regional, resultado['uf'],
@@ -186,7 +243,12 @@ def pagina_dashboard():
             if grafico_municipios is None:
                 st.info('Não há municípios com candidatos suficientes na sua UF.')
             else:
-                st.altair_chart(grafico_municipios, width='stretch')
+                evento_mun = st.altair_chart(
+                    grafico_municipios, width='stretch',
+                    on_select='rerun',
+                    key='grafico_municipio',
+                )
+                _mostrar_universidades_municipio(evento_mun)
 
     coluna_3, coluna_4 = st.columns(2)
     with coluna_3:

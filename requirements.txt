@@ -5,5 +5,5 @@ polars>=1.0.0,<2.0.0   # 2.0 tem breaking changes; o projeto usa a API 1.x (cut,
 fastexcel>=0.10.0      # engine usada pelo polars para ler os .xlsx do INSE
 
 # App e gráficos
-streamlit>=1.30.0
+streamlit>=1.36.0
 altair>=5.0.0          # usado em graficos/percentil.py (não vem garantido com o streamlit)
