@@ -9,3 +9,6 @@ __pycache__
 dump
 ZIPs
 dados
+
+#saída regenerável do graphify (graph.html, GRAPH_REPORT.md, graph.json...)
+graphify-out/
