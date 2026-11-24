@@ -1,5 +1,6 @@
 *.pem
 *.json
+!skills/**/*.json
 */__pycache__
 __pycache__
 .venv
@@ -8,3 +9,6 @@ __pycache__
 dump
 ZIPs
 dados
+
+#saída regenerável do graphify (graph.html, GRAPH_REPORT.md, graph.json...)
+graphify-out/
