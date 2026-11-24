@@ -60,23 +60,6 @@ def legenda_inse(fonte_nivel: str) -> str:
     )
 
 
-def frase_escopo(estatisticas: dict, nota: float, percentil: float, escopo: str, area: str) -> str:
-    """Resumo em texto do histograma, no escopo escolhido (grupo, UF ou Brasil)."""
-    onde = {
-        'grupo': 'do seu grupo INSE',
-        'uf': 'da sua UF',
-        'brasil': 'do Brasil',
-    }[escopo]
-
-    return (
-        f'Entre os {fmt.inteiro(estatisticas["candidatos"])} candidatos {onde} em {area}, '
-        f'{fmt.percentual(percentil)} ficaram abaixo de {fmt.pontos(nota, 0)}. '
-        f'A metade central está entre {fmt.numero(estatisticas["p25"], 0)} e '
-        f'{fmt.numero(estatisticas["p75"], 0)} pontos; a média é '
-        f'{fmt.numero(estatisticas["media"])}.'
-    )
-
-
 def frase_regional_uf(df_ufs: pl.DataFrame, uf: str, area: str, media_brasil: float | None) -> str:
     """Compara a UF do usuário com as demais e com a média nacional, com a posição no ranking."""
     linha = df_ufs.filter(pl.col('NO_UF') == uf)

@@ -7,7 +7,7 @@ Usado no bloco opcional "Informar as demais áreas": mostra de relance onde o ca
 import altair as alt
 import polars as pl
 
-from graficos.paleta import COR_CONTEXTO, COR_NEGATIVO, COR_POSITIVO, COR_TEXTO
+from graficos.paleta import COR_CONTEXTO, COR_GRADE, COR_NEGATIVO, COR_POSITIVO, COR_TEXTO
 
 
 def grafico_areas(df_diferencas: pl.DataFrame) -> alt.LayerChart:
@@ -29,7 +29,7 @@ def grafico_areas(df_diferencas: pl.DataFrame) -> alt.LayerChart:
             title='Diferença para a média do seu grupo (pontos)',
             scale=escala,
             axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, titleFontSize=11,
-                          gridColor='#2a2f3a', format='.0f'),
+                          gridColor=COR_GRADE, format='.0f'),
         ),
     )
 

@@ -9,7 +9,7 @@ import altair as alt
 import polars as pl
 
 import formatacao as fmt
-from graficos.paleta import COR_CONTEXTO, COR_REFERENCIA, COR_TEXTO, COR_USUARIO
+from graficos.paleta import COR_CONTEXTO, COR_GRADE, COR_MEDIANA, COR_REFERENCIA, COR_TEXTO, COR_USUARIO
 
 ALTURA = 340
 
@@ -66,13 +66,13 @@ def grafico_histograma(dados: dict, nota: float, area: str) -> alt.LayerChart:
         x=alt.X(
             'INICIO:Q', title=f'Nota em {area}',
             scale=escala_x,
-            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor='#2a2f3a'),
+            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor=COR_GRADE),
         ),
         x2='FIM:Q',
         y=alt.Y(
             'PERCENTUAL:Q', title='% de candidatos',
             scale=alt.Scale(domain=[0, altura_max * 1.24], nice=False),
-            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor='#2a2f3a'),
+            axis=alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, gridColor=COR_GRADE),
         ),
     )
 
@@ -121,7 +121,7 @@ def grafico_histograma(dados: dict, nota: float, area: str) -> alt.LayerChart:
             x=alt.X('VALOR:Q', scale=escala_x),
             color=alt.Color(
                 'RÓTULO:N',
-                scale=alt.Scale(domain=['Média', 'Mediana'], range=[COR_CONTEXTO, '#f2c14e']),
+                scale=alt.Scale(domain=['Média', 'Mediana'], range=[COR_CONTEXTO, COR_MEDIANA]),
                 legend=alt.Legend(title=None, orient='top', labelColor=COR_TEXTO),
             ),
             tooltip=[

@@ -1,7 +1,7 @@
 """Comparações regionais: as 27 UFs e os municípios da UF, sempre contra a nota do usuário.
 
 Só desenha: as médias vêm prontas de tabela.medias_por_uf / medias_por_municipio.
-A UF e o município do usuário são destacados em verde, marcando onde o candidato está.
+A UF e o município do usuário são destacados em turquesa, marcando onde o candidato está.
 """
 
 import altair as alt
@@ -9,6 +9,7 @@ import polars as pl
 
 import formatacao as fmt
 from graficos.paleta import (
+    COR_GRADE,
     COR_LOCALIZACAO,
     COR_REFERENCIA,
     COR_TEXTO,
@@ -21,21 +22,25 @@ ALTURA_LINHA_MUNICIPIO = 30
 
 
 def _eixo_x(titulo: str) -> alt.Axis:
-    return alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, titleFontSize=11, gridColor='#2a2f3a')
+    return alt.Axis(labelColor=COR_TEXTO, titleColor=COR_TEXTO, titleFontSize=11, gridColor=COR_GRADE)
 
 
 def _eixo_y(limite: int = 400) -> alt.Axis:
     return alt.Axis(
         labelColor=COR_TEXTO, labelFontSize=12, labelLimit=limite,
-        ticks=False, domain=False, titleColor=COR_TEXTO, gridColor='#2a2f3a',
+        ticks=False, domain=False, titleColor=COR_TEXTO, gridColor=COR_GRADE,
+        labelOverlap=False,
     )
 
 
 def _cor_da_diferenca(diferenca: float, destaque: bool) -> str:
-    """Verde para a UF/município do candidato; azul se ele tirou mais; vermelho se tirou menos."""
+    """Turquesa para a UF/município do candidato; laranja se ele tirou mais; azul se tirou menos.
+
+    Mesma regra do histograma: laranja é sempre "você está na frente".
+    """
     if destaque:
         return COR_LOCALIZACAO
-    return COR_REFERENCIA if diferenca > 0 else COR_USUARIO
+    return COR_USUARIO if diferenca > 0 else COR_REFERENCIA
 
 
 def _barras_divergentes(
@@ -81,7 +86,7 @@ def _barras_divergentes(
         )
     )
 
-    # rótulo do valor no fim da barra, na mesma cor da barra (azul, vermelho ou verde)
+    # rótulo do valor no fim da barra, na mesma cor da barra (laranja, azul ou turquesa)
     rotulos_positivos = (
         alt.Chart(dados.filter(pl.col('DIFERENCA') >= 0))
         .mark_text(align='left', dx=4, fontSize=10)
@@ -123,9 +128,9 @@ def grafico_ufs(
 ) -> alt.LayerChart:
     """Barras divergentes: compara a nota do usuário com a média de cada UF.
 
-    - Azul (direita): a UF tem média menor que a nota do usuário (ele tirou mais)
-    - Vermelho (esquerda): a UF tem média maior que a nota do usuário (ele tirou menos)
-    - UF do usuário: verde + contorno branco, marcando onde o candidato está
+    - Laranja (direita): a UF tem média menor que a nota do usuário (ele tirou mais)
+    - Azul (esquerda): a UF tem média maior que a nota do usuário (ele tirou menos)
+    - UF do usuário: turquesa + contorno branco, marcando onde o candidato está
     """
     df = (
         df_medias_uf

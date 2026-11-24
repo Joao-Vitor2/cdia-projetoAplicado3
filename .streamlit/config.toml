@@ -1,6 +1,18 @@
 [theme]
-# tema fixo: os rótulos dos gráficos foram desenhados para fundo escuro
 base = "dark"
+primaryColor = "#5b6cff"
+backgroundColor = "#0b0e1a"
+secondaryBackgroundColor = "#1b2036"
+textColor = "#eef0f8"
+borderColor = "#262c45"
+showWidgetBorder = true
+linkColor = "#8c99ff"
+baseRadius = "0.75rem"
+buttonRadius = "0.75rem"
+font = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+headingFont = "Sora:https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&display=swap"
+headingFontWeights = [800, 700, 700]
+paddingTop = "2rem"
 
 [server]
 headless = true
